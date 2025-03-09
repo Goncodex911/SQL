@@ -1,0 +1,393 @@
+-- DE190604 NGUYỄN LƯƠNG HIẾU THUẬN 
+-- Câu 1:
+-- a.Viết hàm thực hiện đưa vào năm sinh trả về tuổi ứng với năm sinh đó.
+use QLHV
+create function ftuoi(@namsinh int)
+returns int
+as
+Begin
+		declare @tuoi as int
+		set @tuoi = year(getdate())-@namsinh
+		return @tuoi
+End
+
+print dbo.ftuoi(2004)
+-- Hiển thị dssv gồm mahv, ho, yen,tuoi
+select mahv, ho, ten, dbo.ftuoi(year(NgSinh)) as [Tuoi]
+from HOCVIEN
+select * from HOCVIEN
+-- b.Viết hàm thực hiện đưa vào một mã lớp trả về số sinh viên của lớp đó.
+
+create function fsosv(@malop char(3))
+returns int
+as
+Begin
+		declare @sosv int 
+		select @sosv = count(mahv)
+		from HOCVIEN
+		where malop = @malop
+		return @sosv
+End
+
+print dbo.fsosv('k11')
+-- Hiển thị mã lớp  
+
+-- c.Với 1 mã sinh viên và 1 mã khoa, hãy kiểm tra sinh viên có thuộc khoa này không? 
+-- (Trả về đúng hoặc sai).
+create function fkhoa(@mahv char(5), @makhoa char(4))
+returns nvarchar(4)
+as
+begin
+    declare @ketqua BIT,@check nvarchar(4);
+
+    if exists (
+        select 1 
+        from HOCVIEN h join LOP l on l.MALOP=h.MALOP
+			 join KHOA k on k.MAKHOA=l.MAKHOA
+        where h.MAHV = @mahv 
+          AND k.MAKHOA = @makhoa
+    )
+        SET @ketqua = 1; 
+    else
+        SET @ketqua = 0;  
+	if(@ketqua = 1)
+		set @check = N'Đúng'
+	else
+		set @check = N'Sai'
+    return @check;
+end;
+
+print [dbo].[fkhoa]('K1101','MTT')
+-- d.Tính điểm thi sau cùng của 1 sinh viên trong 1 môn học cụ thể.
+create function fdiem(@mamh varchar(10),@mahv char(5))
+returns numeric(4,2)
+as
+Begin
+		declare @diem numeric(4,2)
+		select @diem = diem
+		from KETQUATHI k
+		where mamh = @mamh and mahv = @mahv and lanthi = (select max(lanthi)
+														  from KETQUATHI k1 
+														  where k1.MAHV=k.MAHV and k1.MAMH=k.MAMH)
+		return @diem
+End
+
+print dbo.fdiem('CSDL','K1101')
+-- e.Tính điểm trung bình của 1 sinh viên 
+-- (chú ý: điểm trung bình được tính dựa trên lần thi sau cùng, sử dụng câu 1d đã viết.
+create function faverage(@mahv char(5))
+returns numeric(4,2)
+as
+begin	
+		declare @average numeric(4,2)
+		select @average = AVG(dbo.fdiem(k.MAMH,@mahv))
+		from KETQUATHI k 
+		where k.MAHV = @mahv 
+		return @average
+end
+
+print dbo.faverage('K1102')
+select * from KETQUATHI
+-- f.Nhập vào 1 sinh viên và 1 môn học, trả về các điểm thi của sinh viên này trong các lần thi của môn học đó.
+create function fdiemthi(@mamh varchar(10),@mahv char(5))
+returns table
+as
+		return(
+				select k.DIEM,k.LANTHI
+				from KETQUATHI k
+				where mamh = @mamh and mahv = @mahv)
+select * from dbo.fdiemthi('CSDL','K1102')
+-- g.Nhập vào 1 sinh viên, trả về danh sách các môn học mà sinh viên này phải học.
+
+create function fdsmh(@mahv char(5))
+returns table
+as 
+		return (
+				select mamh, tenmh
+				from MONHOC m join KHOA k on k.MAKHOA=m.MAKHOA
+				join LOP l on l.MAKHOA=k.MAKHOA
+				join HOCVIEN h on h.MALOP=l.MALOP
+				where mahv = @mahv)
+select * from dbo.fdsmh('K1103')
+
+-- Câu 2:
+-- a.In ra danh sách các sinh viên của 1 lớp học
+create procedure sp_dssv @malop char(3)
+as
+	select * 
+	from HOCVIEN
+	where malop = @malop
+
+	exec sp_dssv 'K13'
+-- b.Nhập vào 2 sinh viên, 1 môn học
+-- tìm xem sinh viên nào có điểm thi môn học đó lần đầu tiên cao hơn.
+create proc sp_sosanhdiem @mahv1 char(5), @mahv2 char(5), @mamh varchar(10)
+as
+	declare @diemsv1 numeric(4,2), @diemsv2 numeric(4,2)
+	select @diemsv1 = diem
+	from KETQUATHI
+	where mamh = @mamh and LANTHI = 1 and mahv = @mahv1
+	
+	select @diemsv2 = diem
+	from KETQUATHI
+	where mamh = @mamh and LANTHI =1 and mahv = @mahv2
+	if(@diemsv1>@diemsv2)
+		print @mahv1 + N' có điểm thi lần 1 môn '+@mamh + N' cao hơn sv ' + @mahv2
+	if(@diemsv1=@diemsv2)
+		print @mahv1 + N' có điểm thi lần 1 môn '+@mamh + N' bằng sv ' + @mahv2
+	if(@diemsv1<@diemsv2)
+		print @mahv1 + N' có điểm thi lần 1 môn '+@mamh + N' thấp hơn sv ' + @mahv2
+
+exec sp_sosanhdiem 'K1101','K1102','CSDL'
+
+-- c.Nhập vào 1 môn học và 1 mã sinh viên
+-- Kiểm tra xem sinh viên này có đậu môn này trong lần thi đầu tiên không?
+-- Nếu đậu thì xuất ra là “Đậu”, không thì xuất ra “Không đậu”
+create procedure sp_dauhaykhong @mamh varchar (10), @mahv char(5)
+as
+	declare @ketqua varchar(10)
+	select @ketqua = k.KQUA
+	from KETQUATHI k
+	where mamh=@mamh and LANTHI = 1 and mahv = @mahv
+	if(@ketqua='Khong Dat')
+		print N'Không đậu'
+	else
+		print N'Đậu'
+		
+exec sp_dauhaykhong 'CSDL','K1102'
+
+-- d.Nhập vào 1 khoa, in danh sách các sinh viên (MaSV, họ tên, ngày sinh) thuộc khoa này.
+create procedure sp_dssvcuakhoa @khoa varchar(4)
+as
+	select h.MAHV, h.HO, h.TEN, h.NGSINH
+	from KHOA k join MONHOC m on k.MAKHOA=m.MAKHOA
+	join KETQUATHI ket on ket.MAMH=m.MAMH
+	join HOCVIEN h on h.MAHV=ket.MAHV
+	where m.MAKHOA=@khoa
+	
+exec sp_dssvcuakhoa 'HTTT'
+
+-- e.Nhập vào 1 sinh viên và 1 môn học, in điểm thi của sinh viên này của các lần thi môn học đó.
+create proc sp_diemthi @mahv char(5), @mamh varchar (10)
+as
+	select k.DIEM,k.LANTHI
+	from KETQUATHI k 
+	where k.MAHV = @mahv and k.MAMH = @mamh
+
+exec sp_diemthi 'K1102','CSDL'
+
+-- f.Nhập vào 1 môn học, in danh sách các sinh viên đậu môn này trong lần thi đầu tiên.
+create proc sp_daulandau @mamh varchar(10)
+as
+	select k.MAHV,h.HO,h.TEN
+	from KETQUATHI k join HOCVIEN h on k.MAHV=h.MAHV
+	where k.MAMH=@mamh and k.LANTHI =1 and k.KQUA = N'Dat'
+
+exec sp_daulandau 'CSDL'
+
+-- g.In điểm các môn học của sinh viên có mã SV được nhập vào.
+-- (Chú ý: điểm của các môn học là điểm thi của lần thi sau cung)
+-- Chỉ in môn đã có điểm
+-- Các môn chưa có điểm thì ghi điểm là Null
+-- Các môn chưa có điểm thi ghi điểm là “Chưa có điểm”.
+create proc sp_indiemvoimahv @mahv char(5)
+as
+	SELECT 
+        KQ.MAMH AS MaMon, 
+        CASE 
+            WHEN KQ.DIEM IS NULL THEN 'Chưa có điểm' 
+			else Diem
+        END AS Diem,
+        KQ.KQUA AS KetQua
+    FROM KETQUATHI KQ
+    WHERE KQ.MAHV = @mahv
+      AND KQ.LANTHI = ( 
+          SELECT MAX(K2.LANTHI)
+          FROM KETQUATHI K2
+          WHERE K2.MAHV = KQ.MAHV 
+            AND K2.MAMH = KQ.MAMH
+      )
+    ORDER BY KQ.MAMH;
+
+exec sp_indiemvoimahv 'K1102'
+
+-- h.Tạo thêm 1 table XepLoai(MaHV,DiemTB, KetQua, HocLuc)
+-- Đưa dữ liệu vào bảng xếp loại ( sử dung câu 1e đã viết ở trên)
+-- Qui định: Kết quả của SV là “Đạt” nếu Điểm TB (chỉ tính các môn đã có điểm) của SV đó >=5 
+-- và không quá 2 môn dưới 4 điểm, ngược lại thì kết quả là không đạt.
+-- Đối với những sinh viên có kết quả là “Đạt” thì học lực được xếp loại như sau:
+-- Điểm TB>= 8 thì học lực “Giỏi”
+-- 7 <= Điểm TB <8 thì học lực “Khá”
+-- Còn lại là “Trung bình”
+
+create proc sp_XepLoai
+as
+    DELETE FROM XepLoai;
+    INSERT INTO XepLoai (MaHV, DiemTB, KQUA, HocLuc)
+    SELECT 
+        k.MAHV, 
+        dbo.faverage(k.MAHV) AS DiemTB,
+        CASE 
+            WHEN dbo.faverage(k.MAHV) >= 5 
+                 AND (
+                     SELECT COUNT(*) 
+                     FROM KETQUATHI 
+                     WHERE MAHV = k.MAHV AND DIEM < 4
+                 ) <= 2 
+            THEN N'Đạt'
+            ELSE N'Không đạt'
+        END AS KetQua,
+        CASE 
+            WHEN dbo.faverage(k.MAHV) >= 8 THEN N'Giỏi'
+            WHEN dbo.faverage(k.MAHV) >= 7 and dbo.faverage(k.MAHV)< 8 THEN N'Khá'
+            WHEN dbo.faverage(k.MAHV) >= 5 THEN N'Trung bình'
+            ELSE NULL
+        end as HocLuc
+    from KETQUATHI k
+    group by k.MAHV;
+
+exec sp_XepLoai
+select * from Xeploai
+
+-- i.Với các sinh viên có tham gia đầy đủ các môn học của khoa, hãy in ra điểm trung bình cho các sinh viên này. 
+-- (Chú ý điểm TB được tính dựa trên điểm thi lần sau cùng; sử dụng câu 1e đã viết ở trên)
+alter proc sp_diemtbdaydu
+as
+	select h.MAHV,h.HO,h.TEN,k.MAKHOA, dbo.faverage(h.MAHV) as [DiemTB]
+	from HOCVIEN h join LOP l on h.MALOP=l.MALOP
+		 join KHOA k on k.MAKHOA=l.MAKHOA
+	where ( select count(distinct m.MAMH)
+			from MONHOC m
+			where m.MAKHOA=k.MAKHOA
+		  ) = (
+			select count(distinct ke.MAMH)
+			from KETQUATHI ke
+			where ke.MAHV=h.MAHV
+		  )
+	
+exec sp_diemtbdaydu
+select * from KETQUATHI
+select * from KHOA
+select * from HOCVIEN
+select * from MONHOC
+select * from LOP
+-- Câu 3:
+-- a. Viết câu lẹnh SQL để tạo bảng SOLUONGSV gồm 3 cột mã lớp, tên lớp, số sinh viên của từng lớp từ bảng SINHVIEN
+-- có thể tạo bằng cách: bấm chuột phải vào table -> chọn new table
+insert into SOLUONGSV -- thêm truy vấn vào bảng SOLUONGSV
+select lop.MALOP,TENLOP, count(mahv) as sosv
+from LOP join HOCVIEN on lop.MALOP = HOCVIEN.MALOP
+group by lop.MALOP,TENLOP
+
+-- b. Viết trigger để thực hiện yêu cầu:
+-- Sau khi chèn 1 sinh viên vào bảng SINHVIEN thì tiến hành cập nhật tự động lại số lượng sinh viên của lớp đó
+-- tự động cập nhật chứ ko cần phải sửa thủ công như trước
+-- cách 1(đúng trong mọi trường hợp)
+create trigger trg_ins_hv on HOCVIEN
+after insert  -- sẽ hoạt động sau khi insert vào học viên
+as
+	update SOLUONGSV
+	set SoSV = SOSV+1
+	from inserted i join SOLUONGSV s on i.MALOP = s.MaLop
+-- cách 2(đúng trong trường hợp inserted)
+create trigger trg_ins_hv1 on HOCVIEN
+after insert  -- sẽ hoạt động sau khi insert vào học viên
+as
+	update SOLUONGSV
+	set SoSV = SOSV+1
+	where malop = (select MaLop from inserted) 
+-- cách 3
+create trigger trg_ins_hv2 on HOCVIEN
+after insert  -- sẽ hoạt động sau khi insert vào học viên
+as
+	declare @malop char(3)
+	select @malop = malop from inserted
+	update SOLUONGSV
+	set SoSV = SOSV+1
+	where malop = (select MaLop from inserted) 
+select * from SOLUONGSV
+-- nếu insert mà ko disable thì sẽ +3 lần -> disable (click chuột phải tại trigger)
+-- test
+insert into HOCVIEN
+values('K1121','Nguyen Van','Tai',1986/1/27,'Nam','Nghe An','K11')
+-- nếu ko disable trong bảng thì:
+disable trigger trg_ins_hv1 on HOCVIEN
+disable trigger trg_ins_hv2 on HOCVIEN 
+enable trigger trg_ins_HV_limit on HOCVIEN
+-- c.Viết Trigger để thực hiện yêu cầu: Sau khi chèn, cập nhật, xóa thông tin của một SINHVIEN trong bảng Sinh viên thì tiến hành cập nhật tự động lại số lượng sinh viên của lớp đó.
+create trigger trg_up_hv on HOCVIEN
+after update
+as 
+begin
+	if update(malop)
+	begin
+		update SOLUONGSV
+		set SoSV = SOSV-1
+		from deleted d join SOLUONGSV s on d.MALOP = s.MaLop -- cập nhật tự động số lượng sinh viên => sẽ sửa lại tại mã lớp
+		update SOLUONGSV
+		set SoSV = SOSV+1
+		from inserted i join SOLUONGSV s on i.MALOP = s.MaLop -- cập nhật tự động số lượng sinh viên => sẽ sửa lại tại mã lớp
+	end
+end
+
+-- test
+	update HOCVIEN
+	set ten = 'Skibidi' -- nếu set tên => sẽ ko ảnh hưởng VÌ chỉ khi sửa mã lớp, nó mới có thay đổi
+	where mahv = 'k1101'
+	set malop = 'K13'
+	where mahv = 'k1101'
+
+--d. Viết trigger tạo ràng buộc là số sinh viên của 1 lớp phải < 4
+create trigger trg_ins_HV_limit on HOCVIEN
+after insert
+as
+	declare @sosv int
+	select @sosv = COUNT(h.MAHV)
+	from HOCVIEN h join inserted i on i.MALOP = h.MALOP -- kết nối mã lớp của bảng trigger với bảng hocvien
+	if(@sosv >= 4)
+		begin
+			rollback transaction
+			raiserror(N'Số sinh viên của 1 lớp ko thể > 4',16,1);
+		end
+
+--e. Viết Trigger tạo ràng buộc cho bảng SINHVIEN là tuổi của SINHVIEN phải >=17 tuổi.
+create trigger trg_ins_Age_Limit on HOCVIEN
+after insert
+as
+	declare @tuoi int
+	select @tuoi = DATEDIFF(YEAR,h.NGSINH,GETDATE())
+	from HOCVIEN h join inserted i on i.NGSINH = h.NGSINH
+	if(@tuoi <17)
+		begin
+			rollback transaction
+			raiserror(N'Tuổi của sinh viên >= 17',16,1);
+		end
+-- f.Viết Trigger tạo ràng buộc cho bảng SINHVIEN là tuổi của SINHVIEN phải <=45 đối với nữ và <=50 đối với nam.
+create trigger trg_ins_tuoi_sex_limit on HOCVIEN
+after insert
+as
+		declare @sotuoi int, @gioitinh varchar(3)
+		select @sotuoi = DATEDIFF(YEAR, h.NGSINH, GETDATE()),@gioitinh = h.GIOITINH
+		from HOCVIEN h join inserted i on i.MALOP = h.MALOP 
+		if((@gioitinh = N'Nam' and @sotuoi>50) or (@gioitinh = N'Nu' and @sotuoi>45))
+			begin 
+				rollback transaction
+				raiserror (N'Tuổi của SINHVIEN phải <=45 đối với nữ và <=50 đối với nam',16,1)
+			end
+-- g.Tạo Trigger có tên là Nomodify không cho phép người dùng xóa hay sửa đổi các đối tượng View trong CSDL. 
+-- Thực hiện Disable Trigger này.
+create trigger trg_ins_nomodify
+on database
+	for drop_view, alter_view
+	as
+		begin 
+			rollback transaction
+			raiserror (N'không được phép xóa hay sửa đổi các đối tượng View trong CSDL',16,1)
+		end;
+
+disable trigger trg_ins_nomodify on database;
+enable trigger trg_ins_nomodify on database
+
+--test
+select * from HOCVIEN
+select * from SOLUONGSV
